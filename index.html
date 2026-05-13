@@ -141,7 +141,7 @@
 
   /* Camera */
   .cam-box{border:2px dashed var(--gray-lt);border-radius:4px;background:var(--gray-bg);min-height:160px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-  #video-feed{width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;}
+  #video-feed{width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;transform:scaleX(-1);}
   #photo-canvas{display:none;}
   #captured-img{width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;}
   .cam-ph{display:flex;flex-direction:column;align-items:center;gap:7px;z-index:1;padding:20px;}
@@ -446,7 +446,12 @@ function snapPhoto(){
   const v = document.getElementById('video-feed');
   const c = document.getElementById('photo-canvas');
   c.width = v.videoWidth||320; c.height = v.videoHeight||240;
-  c.getContext('2d').drawImage(v,0,0);
+  const ctx = c.getContext('2d');
+  // Flip canvas horizontally to un-mirror the selfie
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(v, -c.width, 0);
+  ctx.restore();
   photoURL = c.toDataURL('image/jpeg',.85);
   const img = document.getElementById('captured-img');
   img.src = photoURL; img.style.display = 'block'; v.style.display = 'none';
