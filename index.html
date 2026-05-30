@@ -76,6 +76,7 @@
   .td-time{font-family:'Barlow Condensed',sans-serif;font-size:.82rem;color:var(--gray-dk);white-space:nowrap;}
   .signout-btn{background:var(--red);color:var(--white);border:none;padding:5px 10px;font-family:'Barlow Condensed',sans-serif;font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:3px;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;}
   .signout-btn:active{background:var(--red-dark);}
+  #so-confirm-btn:disabled{opacity:.45;cursor:not-allowed;}
   .btn-del{background:none;border:none;cursor:pointer;padding:6px;border-radius:3px;-webkit-tap-highlight-color:transparent;}
   .btn-del svg{display:block;width:16px;height:16px;}
   .empty-row td{text-align:center;padding:36px 16px;color:var(--gray-mid);font-size:.88rem;font-style:italic;}
@@ -367,6 +368,45 @@
   </div><!-- /.modal -->
 </div><!-- /.overlay -->
 
+<!-- SIGN-OUT CAMERA MODAL -->
+<div class="overlay" id="so-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <h2>Sign Out: <span id="so-name"></span></h2>
+      <button class="modal-x" onclick="closeSignOutModal()">&#215;</button>
+    </div>
+    <div class="modal-bd">
+      <p style="font-family:'Barlow',sans-serif;font-size:.88rem;color:var(--gray-dk);margin-bottom:4px;">
+        📷 Take a photo to confirm your sign-out.
+      </p>
+      <div class="cam-box" id="so-cam-box" onclick="handleSoCamClick()">
+        <video id="so-video" autoplay playsinline style="width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;transform:scaleX(-1);"></video>
+        <canvas id="so-canvas" style="display:none;"></canvas>
+        <img id="so-captured-img" style="width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;" alt="sign-out photo"/>
+        <div class="cam-ph" id="so-cam-ph">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <span>Tap to activate camera</span>
+        </div>
+      </div>
+      <div class="cam-btns" id="so-cam-btns">
+        <button class="btn-blk" id="so-btn-snap" onclick="snapSignOutPhoto()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+          Take Photo
+        </button>
+        <button class="btn-blk" id="so-btn-retake" style="display:none" onclick="retakeSignOutPhoto()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+          Retake
+        </button>
+        <button class="btn-blk" style="background:#333" onclick="closeSignOutModal()">Cancel</button>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn-cancel" onclick="closeSignOutModal()">Cancel</button>
+      <button class="btn-save" id="so-confirm-btn" onclick="confirmSignOut()" disabled>&#10003; Confirm Sign Out</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX -->
 <div class="lightbox" id="lightbox" onclick="this.classList.remove('open')">
   <img id="lightbox-img" src="" alt="Photo"/>
@@ -524,6 +564,96 @@ function saveEntry(){
   closeModal();
 }
 
+// ── SIGN-OUT MODAL ──
+let signOutTargetId = null;
+let signOutStream = null;
+let signOutPhotoURL = null;
+
+function openSignOutModal(id){
+  signOutTargetId = id;
+  signOutPhotoURL = null;
+  const e = entries.find(x=>x.id===id);
+  document.getElementById('so-name').textContent = e ? `${e.first} ${e.last}` : '';
+  // Reset camera state
+  document.getElementById('so-video').style.display = 'none';
+  document.getElementById('so-captured-img').style.display = 'none';
+  document.getElementById('so-cam-ph').style.display = 'flex';
+  document.getElementById('so-cam-btns').style.display = 'none';
+  document.getElementById('so-btn-snap').style.display = 'inline-flex';
+  document.getElementById('so-btn-retake').style.display = 'none';
+  document.getElementById('so-confirm-btn').disabled = true;
+  document.getElementById('so-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSignOutModal(){
+  stopSignOutStream(true);
+  document.getElementById('so-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+  signOutTargetId = null;
+}
+
+function handleSoCamClick(){
+  if(signOutPhotoURL || signOutStream) return;
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false})
+    .then(s=>{
+      signOutStream = s;
+      const v = document.getElementById('so-video');
+      v.srcObject = s; v.style.display = 'block';
+      document.getElementById('so-cam-ph').style.display = 'none';
+      document.getElementById('so-cam-btns').style.display = 'flex';
+      document.getElementById('so-btn-snap').style.display = 'inline-flex';
+      document.getElementById('so-btn-retake').style.display = 'none';
+    }).catch(e=>alert('Camera unavailable: '+e.message));
+}
+
+function snapSignOutPhoto(){
+  const v = document.getElementById('so-video');
+  const c = document.getElementById('so-canvas');
+  c.width = v.videoWidth||320; c.height = v.videoHeight||240;
+  const ctx = c.getContext('2d');
+  ctx.save(); ctx.scale(-1,1); ctx.drawImage(v,-c.width,0); ctx.restore();
+  signOutPhotoURL = c.toDataURL('image/jpeg',.85);
+  const img = document.getElementById('so-captured-img');
+  img.src = signOutPhotoURL; img.style.display = 'block';
+  v.style.display = 'none';
+  document.getElementById('so-btn-snap').style.display = 'none';
+  document.getElementById('so-btn-retake').style.display = 'inline-flex';
+  stopSignOutStream(false);
+  document.getElementById('so-confirm-btn').disabled = false;
+}
+
+function retakeSignOutPhoto(){
+  signOutPhotoURL = null;
+  document.getElementById('so-captured-img').style.display = 'none';
+  document.getElementById('so-btn-retake').style.display = 'none';
+  document.getElementById('so-btn-snap').style.display = 'inline-flex';
+  document.getElementById('so-confirm-btn').disabled = true;
+  handleSoCamClick();
+}
+
+function stopSignOutStream(reset=true){
+  if(signOutStream){ signOutStream.getTracks().forEach(t=>t.stop()); signOutStream=null; document.getElementById('so-video').srcObject=null; }
+  if(reset){
+    document.getElementById('so-video').style.display='none';
+    document.getElementById('so-captured-img').style.display='none';
+    document.getElementById('so-cam-ph').style.display='flex';
+    document.getElementById('so-cam-btns').style.display='none';
+    signOutPhotoURL = null;
+  }
+}
+
+function confirmSignOut(){
+  if(!signOutPhotoURL) return;
+  const e = entries.find(x=>x.id===signOutTargetId);
+  if(e && !e.timeOut){
+    e.timeOut = fmt(new Date());
+    e.signOutPhoto = signOutPhotoURL;
+  }
+  render();
+  closeSignOutModal();
+}
+
 function signOut(id){
   const e = entries.find(x=>x.id===id);
   if(e && !e.timeOut){ e.timeOut = fmt(new Date()); render(); }
@@ -560,7 +690,7 @@ function render(){
       <td class="td-time">
         ${e.timeOut
           ? `<span>${e.timeOut}</span>`
-          : `<button class="signout-btn" onclick="signOut(${e.id})">Sign Out</button>`}
+          : `<button class="signout-btn" onclick="openSignOutModal(${e.id})">Sign Out</button>`}
       </td>
       <td>
         <button class="btn-del" onclick="deleteEntry(${e.id})" title="Remove">
