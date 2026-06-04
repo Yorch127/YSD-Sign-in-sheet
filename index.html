@@ -141,10 +141,32 @@
   .fg input:focus,.full-input:focus{border-color:var(--red);}
 
   /* Camera */
-  .cam-box{border:2px dashed var(--gray-lt);border-radius:4px;background:var(--gray-bg);min-height:160px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-  #video-feed{width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;transform:scaleX(-1);}
+  .cam-box{
+    border:2px dashed var(--gray-lt);border-radius:4px;background:#000;
+    position:relative;width:100%;
+    aspect-ratio:4/3;
+    cursor:pointer;-webkit-tap-highlight-color:transparent;
+    overflow:hidden;
+  }
+  .cam-box .cam-ph{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:7px;z-index:2;
+    background:var(--gray-bg);
+  }
+  .cam-video{
+    position:absolute;inset:0;width:100%;height:100%;
+    object-fit:contain;   /* CONTAIN — no crop, full frame visible */
+    display:none;
+    background:#000;
+  }
+  .cam-captured{
+    position:absolute;inset:0;width:100%;height:100%;
+    object-fit:contain;
+    display:none;
+    background:#000;
+  }
   #photo-canvas{display:none;}
-  #captured-img{width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;}
+  #so-canvas{display:none;}
   .cam-ph{display:flex;flex-direction:column;align-items:center;gap:7px;z-index:1;padding:20px;}
   .cam-ph svg{width:38px;height:38px;opacity:.25;}
   .cam-ph span{font-size:.82rem;color:var(--gray-mid);text-align:center;}
@@ -154,7 +176,7 @@
 
   /* Signature */
   .sig-wrap{border:2px solid var(--gray-lt);border-radius:4px;background:var(--white);position:relative;}
-  #sig-canvas{display:block;width:100%;height:130px;cursor:crosshair;touch-action:none;}
+  #sig-canvas{display:block;width:100%;cursor:crosshair;touch-action:none;}
   .sig-line{position:absolute;bottom:28px;left:14px;right:14px;border-bottom:1px dashed #ddd;pointer-events:none;}
   .sig-hint{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:.68rem;color:#ccc;pointer-events:none;font-style:italic;}
   .sig-foot{display:flex;justify-content:flex-end;padding:7px 10px;border-top:1px solid var(--gray-bg);}
@@ -328,11 +350,11 @@
       <!-- Camera -->
       <div>
         <label class="sub-lbl">Photo — tap to open camera</label>
-        <div class="cam-box" id="cam-box" onclick="handleCamClick()">
-          <video id="video-feed" autoplay playsinline></video>
+        <div class="cam-box" id="cam-box">
+          <video id="video-feed" class="cam-video" autoplay playsinline muted></video>
           <canvas id="photo-canvas"></canvas>
-          <img id="captured-img" alt="photo"/>
-          <div class="cam-ph" id="cam-ph">
+          <img id="captured-img" class="cam-captured" alt="photo"/>
+          <div class="cam-ph" id="cam-ph" onclick="handleCamClick()" style="cursor:pointer;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             <span>Tap to activate camera</span>
           </div>
@@ -381,13 +403,13 @@
     </div>
     <div class="modal-bd">
       <p style="font-family:'Barlow',sans-serif;font-size:.88rem;color:var(--gray-dk);margin-bottom:4px;">
-        📷 Take a photo to confirm your sign-out.
+        Take a photo to confirm your sign-out.
       </p>
-      <div class="cam-box" id="so-cam-box" onclick="handleSoCamClick()">
-        <video id="so-video" autoplay playsinline style="width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;transform:scaleX(-1);"></video>
-        <canvas id="so-canvas" style="display:none;"></canvas>
-        <img id="so-captured-img" style="width:100%;height:100%;position:absolute;inset:0;object-fit:cover;display:none;" alt="sign-out photo"/>
-        <div class="cam-ph" id="so-cam-ph">
+      <div class="cam-box" id="so-cam-box">
+        <video id="so-video" class="cam-video" autoplay playsinline muted></video>
+        <canvas id="so-canvas"></canvas>
+        <img id="so-captured-img" class="cam-captured" alt="sign-out photo"/>
+        <div class="cam-ph" id="so-cam-ph" onclick="handleSoCamClick()" style="cursor:pointer;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
           <span>Tap to activate camera</span>
         </div>
@@ -430,6 +452,11 @@ render();
   document.getElementById(id).addEventListener('input', saveToStorage);
 });
 
+// Resize signature canvas if window resizes while modal is open
+window.addEventListener('resize', ()=>{
+  if(document.getElementById('overlay').classList.contains('open')) resizeSig();
+});
+
 // ── LIGHTBOX ──
 function openPhoto(src){
   document.getElementById('lightbox-img').src = src;
@@ -442,12 +469,13 @@ const sigX = sigC.getContext('2d');
 let drawing = false, lx = 0, ly = 0;
 
 function resizeSig(){
-  // Save existing drawing, resize, restore
-  const tmp = sigC.toDataURL();
-  const w = Math.floor(sigC.parentElement.getBoundingClientRect().width) - 4;
-  sigC.width = w; sigC.height = 130;
-  // Restore if had content
-  const img = new Image(); img.onload = ()=>sigX.drawImage(img,0,0); img.src = tmp;
+  const wasEmpty = isSigEmpty();
+  const tmp = wasEmpty ? null : sigC.toDataURL();
+  const rect = sigC.parentElement.getBoundingClientRect();
+  const w = Math.max(Math.floor(rect.width) - 4, 100);
+  sigC.width = w;
+  sigC.height = 130;
+  if(tmp){ const img = new Image(); img.onload = ()=>sigX.drawImage(img,0,0); img.src = tmp; }
 }
 
 function getPos(e){
@@ -480,31 +508,44 @@ let stream = null, photoURL = null;
 
 function handleCamClick(){
   if(photoURL || stream) return;
-  navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false})
-    .then(s=>{
-      stream = s;
-      const v = document.getElementById('video-feed');
-      v.srcObject = s; v.style.display = 'block';
-      document.getElementById('cam-ph').style.display = 'none';
-      document.getElementById('cam-btns').style.display = 'flex';
-      document.getElementById('btn-snap').style.display = 'inline-flex';
-      document.getElementById('btn-retake').style.display = 'none';
-    }).catch(e=>alert('Camera unavailable: '+e.message));
+  // Try environment camera first (back), fall back to any
+  const constraints = {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}},audio:false};
+  navigator.mediaDevices.getUserMedia(constraints)
+    .then(startSignInCamera)
+    .catch(()=>{
+      navigator.mediaDevices.getUserMedia({video:true,audio:false})
+        .then(startSignInCamera)
+        .catch(e=>alert('Camera unavailable: '+e.message));
+    });
+}
+
+function startSignInCamera(s){
+  stream = s;
+  const v = document.getElementById('video-feed');
+  v.srcObject = s;
+  v.style.display = 'block';
+  // Must call play() explicitly on some mobile browsers
+  v.play().catch(()=>{});
+  document.getElementById('cam-ph').style.display = 'none';
+  document.getElementById('cam-btns').style.display = 'flex';
+  document.getElementById('btn-snap').style.display = 'inline-flex';
+  document.getElementById('btn-retake').style.display = 'none';
 }
 
 function snapPhoto(){
   const v = document.getElementById('video-feed');
-  const c = document.getElementById('photo-canvas');
-  c.width = v.videoWidth||320; c.height = v.videoHeight||240;
-  const ctx = c.getContext('2d');
-  // Flip canvas horizontally to un-mirror the selfie
-  ctx.save();
-  ctx.scale(-1, 1);
-  ctx.drawImage(v, -c.width, 0);
-  ctx.restore();
-  photoURL = c.toDataURL('image/jpeg',.85);
+  const canvas = document.getElementById('photo-canvas');
+  const w = v.videoWidth || 640;
+  const h = v.videoHeight || 480;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  // Draw as-is (no mirror flip — environment camera is already correct orientation)
+  ctx.drawImage(v, 0, 0, w, h);
+  photoURL = canvas.toDataURL('image/jpeg', 0.85);
   const img = document.getElementById('captured-img');
-  img.src = photoURL; img.style.display = 'block'; v.style.display = 'none';
+  img.src = photoURL;
+  img.style.display = 'block';
+  v.style.display = 'none';
   document.getElementById('btn-snap').style.display = 'none';
   document.getElementById('btn-retake').style.display = 'inline-flex';
   stopStream(false);
@@ -521,9 +562,11 @@ function retakePhoto(){
 function cancelCam(){ stopStream(true); }
 
 function stopStream(reset=true){
-  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; document.getElementById('video-feed').srcObject=null; }
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  const v = document.getElementById('video-feed');
+  if(v){ v.srcObject=null; }
   if(reset){
-    document.getElementById('video-feed').style.display='none';
+    v.style.display='none';
     document.getElementById('captured-img').style.display='none';
     document.getElementById('cam-ph').style.display='flex';
     document.getElementById('cam-btns').style.display='none';
@@ -538,7 +581,8 @@ function openModal(){
   ['inp-first','inp-last','inp-company'].forEach(id=>document.getElementById(id).value='');
   clearSig(); photoURL=null; stopStream(true);
   document.body.style.overflow = 'hidden';
-  setTimeout(()=>{ resizeSig(); document.getElementById('inp-first').focus(); }, 150);
+  // Give the modal time to layout before measuring canvas width
+  requestAnimationFrame(()=>{ setTimeout(()=>{ resizeSig(); document.getElementById('inp-first').focus(); }, 50); });
 }
 
 function closeModal(){
@@ -639,27 +683,40 @@ function closeSignOutModal(){
 
 function handleSoCamClick(){
   if(signOutPhotoURL || signOutStream) return;
-  navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false})
-    .then(s=>{
-      signOutStream = s;
-      const v = document.getElementById('so-video');
-      v.srcObject = s; v.style.display = 'block';
-      document.getElementById('so-cam-ph').style.display = 'none';
-      document.getElementById('so-cam-btns').style.display = 'flex';
-      document.getElementById('so-btn-snap').style.display = 'inline-flex';
-      document.getElementById('so-btn-retake').style.display = 'none';
-    }).catch(e=>alert('Camera unavailable: '+e.message));
+  const constraints = {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}},audio:false};
+  navigator.mediaDevices.getUserMedia(constraints)
+    .then(startSignOutCamera)
+    .catch(()=>{
+      navigator.mediaDevices.getUserMedia({video:true,audio:false})
+        .then(startSignOutCamera)
+        .catch(e=>alert('Camera unavailable: '+e.message));
+    });
+}
+
+function startSignOutCamera(s){
+  signOutStream = s;
+  const v = document.getElementById('so-video');
+  v.srcObject = s;
+  v.style.display = 'block';
+  v.play().catch(()=>{});
+  document.getElementById('so-cam-ph').style.display = 'none';
+  document.getElementById('so-cam-btns').style.display = 'flex';
+  document.getElementById('so-btn-snap').style.display = 'inline-flex';
+  document.getElementById('so-btn-retake').style.display = 'none';
 }
 
 function snapSignOutPhoto(){
   const v = document.getElementById('so-video');
-  const c = document.getElementById('so-canvas');
-  c.width = v.videoWidth||320; c.height = v.videoHeight||240;
-  const ctx = c.getContext('2d');
-  ctx.save(); ctx.scale(-1,1); ctx.drawImage(v,-c.width,0); ctx.restore();
-  signOutPhotoURL = c.toDataURL('image/jpeg',.85);
+  const canvas = document.getElementById('so-canvas');
+  const w = v.videoWidth || 640;
+  const h = v.videoHeight || 480;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(v, 0, 0, w, h);
+  signOutPhotoURL = canvas.toDataURL('image/jpeg', 0.85);
   const img = document.getElementById('so-captured-img');
-  img.src = signOutPhotoURL; img.style.display = 'block';
+  img.src = signOutPhotoURL;
+  img.style.display = 'block';
   v.style.display = 'none';
   document.getElementById('so-btn-snap').style.display = 'none';
   document.getElementById('so-btn-retake').style.display = 'inline-flex';
@@ -677,9 +734,11 @@ function retakeSignOutPhoto(){
 }
 
 function stopSignOutStream(reset=true){
-  if(signOutStream){ signOutStream.getTracks().forEach(t=>t.stop()); signOutStream=null; document.getElementById('so-video').srcObject=null; }
+  if(signOutStream){ signOutStream.getTracks().forEach(t=>t.stop()); signOutStream=null; }
+  const v = document.getElementById('so-video');
+  if(v){ v.srcObject=null; }
   if(reset){
-    document.getElementById('so-video').style.display='none';
+    v.style.display='none';
     document.getElementById('so-captured-img').style.display='none';
     document.getElementById('so-cam-ph').style.display='flex';
     document.getElementById('so-cam-btns').style.display='none';
